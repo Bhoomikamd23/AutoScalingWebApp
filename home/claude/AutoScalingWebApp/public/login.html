@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — AutoScale Cloud</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg:       #080c14;
+      --panel:    #0e1420;
+      --border:   rgba(0,198,255,0.18);
+      --accent:   #00c6ff;
+      --accent2:  #0072ff;
+      --text:     #e8f0ff;
+      --muted:    #6b7fa3;
+      --danger:   #ff4f6a;
+      --success:  #00e5a0;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: 'Space Grotesk', sans-serif;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Animated grid background */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,198,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,198,255,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridDrift 20s linear infinite;
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(0,114,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    @keyframes gridDrift {
+      0%   { background-position: 0 0, 0 0; }
+      100% { background-position: 40px 40px, 40px 40px; }
+    }
+
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.35;
+      pointer-events: none;
+      animation: orbFloat 8s ease-in-out infinite alternate;
+    }
+    .orb1 { width: 400px; height: 400px; background: #0072ff; top: -100px; left: -100px; }
+    .orb2 { width: 300px; height: 300px; background: #00c6ff; bottom: -80px; right: -80px; animation-delay: -4s; }
+
+    @keyframes orbFloat {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(30px, 20px) scale(1.1); }
+    }
+
+    .login-wrapper {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 440px;
+      padding: 20px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .logo-icon {
+      font-size: 48px;
+      display: block;
+      margin-bottom: 8px;
+      animation: pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { filter: drop-shadow(0 0 12px rgba(0,198,255,0.6)); }
+      50%       { filter: drop-shadow(0 0 24px rgba(0,198,255,1)); }
+    }
+
+    .logo h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo p {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-top: 4px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 36px 32px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .tabs {
+      display: flex;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 9px;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: white;
+      box-shadow: 0 4px 12px rgba(0,114,255,0.4);
+    }
+
+    .field {
+      margin-bottom: 18px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 13px 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,198,255,0.15);
+      background: rgba(0,198,255,0.04);
+    }
+
+    .field input::placeholder { color: var(--muted); }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      margin-top: 8px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: white;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: all 0.2s;
+      box-shadow: 0 4px 20px rgba(0,114,255,0.35);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(0,114,255,0.5); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .btn-primary .spinner {
+      display: none;
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn-primary.loading .btn-text { display: none; }
+    .btn-primary.loading .spinner { display: block; }
+
+    .message {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      text-align: center;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.error   { background: rgba(255,79,106,0.15); border: 1px solid rgba(255,79,106,0.3); color: var(--danger); display: block; }
+    .message.success { background: rgba(0,229,160,0.15); border: 1px solid rgba(0,229,160,0.3); color: var(--success); display: block; }
+
+    .divider {
+      text-align: center;
+      position: relative;
+      margin: 22px 0;
+    }
+
+    .divider::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 0; right: 0;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .divider span {
+      position: relative;
+      background: var(--panel);
+      padding: 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+    }
+
+    .btn-google {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+
+    .btn-google:hover { background: rgba(255,255,255,0.08); border-color: rgba(0,198,255,0.4); }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    #signupPanel { display: none; }
+  </style>
+</head>
+<body>
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+
+  <div class="login-wrapper">
+    <div class="logo">
+      <span class="logo-icon">☁️</span>
+      <h1>AutoScale Cloud</h1>
+      <p>Infrastructure Dashboard</p>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" onclick="showPanel('login')">Sign In</button>
+        <button class="tab" onclick="showPanel('signup')">Sign Up</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="loginPanel">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" />
+        </div>
+        <button class="btn-primary" id="loginBtn" onclick="handleLogin()">
+          <span class="btn-text">Sign In →</span>
+          <div class="spinner"></div>
+        </button>
+        <div id="loginMsg" class="message"></div>
+
+        <div class="divider"><span>or continue with</span></div>
+        <button class="btn-google" onclick="handleGoogle()">
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.4 30.2 0 24 0 14.7 0 6.7 5.4 2.8 13.2l7.9 6.1C12.5 13.1 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.7 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7L2.4 13.2A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.4 10.6l8.3-5.9z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.2 1.5-5 2.4-8.4 2.4-6.2 0-11.5-4.2-13.3-9.9l-8 6.1C6.4 42.5 14.6 48 24 48z"/></svg>
+          Continue with Google
+        </button>
+      </div>
+
+      <!-- SIGNUP -->
+      <div id="signupPanel">
+        <div class="field">
+          <label>Full Name</label>
+          <input type="text" id="signupName" placeholder="Bhoomika MD" />
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="signupEmail" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="signupPassword" placeholder="Min 6 characters" />
+        </div>
+        <button class="btn-primary" id="signupBtn" onclick="handleSignup()">
+          <span class="btn-text">Create Account →</span>
+          <div class="spinner"></div>
+        </button>
+        <div id="signupMsg" class="message"></div>
+      </div>
+    </div>
+
+    <p class="footer-note">🔒 Secured by Supabase Auth</p>
+  </div>
+
+  <script>
+    // ── Supabase init ──────────────────────────────────────────────────────
+    const SUPABASE_URL = 'https://ebexokvdkzxqrvqudisw.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImViZXhva3Zka3p4cXJ2cXVkaXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNDEyNjUsImV4cCI6MjA5MzgxNzI2NX0.nULuy6nFlzFpvzw8aMEN28ccJ1XJSg07Ezwc_YZKQ1w';
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Redirect if already logged in
+    (async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) window.location.href = '/';
+    })();
+
+    // ── Tab switching ──────────────────────────────────────────────────────
+    function showPanel(panel) {
+      document.getElementById('loginPanel').style.display  = panel === 'login'  ? 'block' : 'none';
+      document.getElementById('signupPanel').style.display = panel === 'signup' ? 'block' : 'none';
+      document.querySelectorAll('.tab').forEach((t, i) => {
+        t.classList.toggle('active', (panel === 'login' && i === 0) || (panel === 'signup' && i === 1));
+      });
+    }
+
+    function setLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      btn.classList.toggle('loading', loading);
+      btn.disabled = loading;
+    }
+
+    function showMsg(id, text, type) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = `message ${type}`;
+    }
+
+    // ── Login ──────────────────────────────────────────────────────────────
+    async function handleLogin() {
+      const email    = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      if (!email || !password) return showMsg('loginMsg', 'Please fill in all fields', 'error');
+
+      setLoading('loginBtn', true);
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      setLoading('loginBtn', false);
+
+      if (error) {
+        showMsg('loginMsg', error.message, 'error');
+      } else {
+        showMsg('loginMsg', '✅ Login successful! Redirecting...', 'success');
+        setTimeout(() => window.location.href = '/', 800);
+      }
+    }
+
+    // ── Signup ─────────────────────────────────────────────────────────────
+    async function handleSignup() {
+      const name     = document.getElementById('signupName').value.trim();
+      const email    = document.getElementById('signupEmail').value.trim();
+      const password = document.getElementById('signupPassword').value;
+
+      if (!name || !email || !password) return showMsg('signupMsg', 'Please fill in all fields', 'error');
+      if (password.length < 6) return showMsg('signupMsg', 'Password must be at least 6 characters', 'error');
+
+      setLoading('signupBtn', true);
+      const { error } = await sb.auth.signUp({
+        email, password,
+        options: { data: { full_name: name } }
+      });
+      setLoading('signupBtn', false);
+
+      if (error) {
+        showMsg('signupMsg', error.message, 'error');
+      } else {
+        showMsg('signupMsg', '✅ Account created! Check your email to confirm, then sign in.', 'success');
+      }
+    }
+
+    // ── Google OAuth ───────────────────────────────────────────────────────
+    async function handleGoogle() {
+      await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin + '/' }
+      });
+    }
+
+    // ── Enter key support ──────────────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const loginVisible = document.getElementById('loginPanel').style.display !== 'none';
+        if (loginVisible) handleLogin(); else handleSignup();
+      }
+    });
+  </script>
+</body>
+</html>

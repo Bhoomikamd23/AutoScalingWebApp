@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Analytics — AutoScale</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .gauge-row { display:flex; gap:24px; flex-wrap:wrap; margin-bottom:20px; }
+    .gauge-wrap { flex:1; min-width:160px; background:var(--panel2); border:1px solid var(--border); border-radius:14px; padding:20px; text-align:center; }
+    .gauge-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-family:'JetBrains Mono',monospace; margin-bottom:14px; }
+    .gauge-ring { position:relative; width:110px; height:110px; margin:0 auto 10px; }
+    .gauge-ring svg { transform:rotate(-90deg); width:100%; height:100%; }
+    .gauge-track { fill:none; stroke:rgba(255,255,255,.06); stroke-width:10; }
+    .gauge-fill  { fill:none; stroke:var(--accent); stroke-width:10; stroke-linecap:round; transition:stroke-dasharray .6s ease; }
+    .gauge-fill.mem { stroke:var(--warning); }
+    .gauge-fill.net { stroke:var(--success); }
+    .gauge-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .gauge-center span { font-size:24px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+    .gauge-center small { font-size:11px; color:var(--muted); }
+    .stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:20px; }
+    .stat-box { background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:16px; }
+    .stat-box .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-family:'JetBrains Mono',monospace; margin-bottom:8px; }
+    .stat-box .val { font-size:22px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+    .stat-box .val.green { color:var(--success); }
+    .stat-box .val.orange { color:var(--warning); }
+    .stat-box .val.red { color:var(--danger); }
+    .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+    .simulate-btn { padding:12px 24px; background:linear-gradient(135deg,#ff6b35,#ff4f6a); border:none; border-radius:10px; color:#fff; font-family:'Space Grotesk',sans-serif; font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; }
+    .simulate-btn:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(255,79,106,.4); }
+    .export-btn { padding:10px 18px; background:rgba(0,229,160,.1); border:1px solid rgba(0,229,160,.3); border-radius:10px; color:var(--success); font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600; cursor:pointer; transition:all .2s; text-decoration:none; display:inline-block; }
+    .export-btn:hover { background:rgba(0,229,160,.2); }
+    @media(max-width:768px){.charts-grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><span class="logo-icon">☁️</span><span class="logo-text">AutoScale</span></div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">📊 Dashboard</a>
+    <a class="nav-item" href="/analytics">📈 Analytics</a>
+    <a class="nav-item" href="/logs">📋 Request Logs</a>
+    <a class="nav-item" href="/security">🛡️ Security</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-details"><div class="user-name" id="userName">...</div><div class="user-role">Admin</div></div>
+    </div>
+    <button class="logout-btn" onclick="handleLogout()">⏻</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="uptime-badge">📈 Analytics</div>
+    </div>
+    <div class="topbar-right">
+      <a class="export-btn" href="/api/export/traffic" download>⬇ Export CSV</a>
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙</button>
+    </div>
+  </div>
+  <div id="notification" class="notification"></div>
+
+  <!-- Live gauges -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">⚙️ Live System Resources</h2>
+      <button class="simulate-btn" onclick="simulateTraffic()">⚡ Simulate Traffic Spike</button>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-wrap">
+        <div class="gauge-label">CPU Usage</div>
+        <div class="gauge-ring">
+          <svg viewBox="0 0 100 100"><circle class="gauge-track" cx="50" cy="50" r="40"/><circle class="gauge-fill" id="cpuArc" cx="50" cy="50" r="40" stroke-dasharray="0 251"/></svg>
+          <div class="gauge-center"><span id="cpuVal">0</span><small>%</small></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)" id="cpuStatus">Normal</div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label">Memory Usage</div>
+        <div class="gauge-ring">
+          <svg viewBox="0 0 100 100"><circle class="gauge-track" cx="50" cy="50" r="40"/><circle class="gauge-fill mem" id="memArc" cx="50" cy="50" r="40" stroke-dasharray="0 251"/></svg>
+          <div class="gauge-center"><span id="memVal">0</span><small>%</small></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)" id="memStatus">Normal</div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label">Network I/O</div>
+        <div class="gauge-ring">
+          <svg viewBox="0 0 100 100"><circle class="gauge-track" cx="50" cy="50" r="40"/><circle class="gauge-fill net" id="netArc" cx="50" cy="50" r="40" stroke-dasharray="0 251"/></svg>
+          <div class="gauge-center"><span id="netVal">0</span><small>%</small></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Simulated</div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label">Active Servers</div>
+        <div class="gauge-ring">
+          <svg viewBox="0 0 100 100"><circle class="gauge-track" cx="50" cy="50" r="40"/><circle class="gauge-fill" id="srvArc" cx="50" cy="50" r="40" stroke-dasharray="0 251" style="stroke:#a78bfa"/></svg>
+          <div class="gauge-center"><span id="srvVal">1</span><small>/4</small></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)" id="srvStatus">Minimal</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Key stats -->
+  <div class="stat-row">
+    <div class="stat-box"><div class="lbl">Total Requests</div><div class="val green" id="statTotal">0</div></div>
+    <div class="stat-box"><div class="lbl">Current Traffic</div><div class="val" id="statTraffic">0</div></div>
+    <div class="stat-box"><div class="lbl">Peak Traffic</div><div class="val orange" id="statPeak">0</div></div>
+    <div class="stat-box"><div class="lbl">Peak Time</div><div class="val" id="statPeakTime" style="font-size:14px">—</div></div>
+    <div class="stat-box"><div class="lbl">Uptime</div><div class="val green" id="statUptime">0m</div></div>
+    <div class="stat-box"><div class="lbl">Cost / day</div><div class="val" id="statCost">$1.00</div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="section-card" style="margin-bottom:0">
+      <div class="section-header"><h2 class="section-title">📊 Traffic Over Time</h2></div>
+      <canvas id="trafficChart" height="120"></canvas>
+    </div>
+    <div class="section-card" style="margin-bottom:0">
+      <div class="section-header"><h2 class="section-title">🖥️ Server Count Over Time</h2></div>
+      <canvas id="serverChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <div style="height:20px"></div>
+
+  <!-- Load Balancer Visual -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">⚖️ Load Balancer Distribution</h2>
+      <span class="section-badge" id="lbMode">Round Robin</span>
+    </div>
+    <div id="lbVisual" style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:10px 0;">
+      <div style="background:linear-gradient(135deg,var(--accent2),var(--accent));border-radius:12px;padding:12px 28px;font-weight:700;font-size:15px;box-shadow:0 4px 20px rgba(0,114,255,.35)">
+        ⚖️ Load Balancer
+      </div>
+      <div id="lbArrows" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"></div>
+      <div id="lbServers" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap"></div>
+    </div>
+    <div style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:8px"><span>Request Distribution</span></div>
+      <div id="lbBars" style="display:flex;gap:8px;align-items:flex-end;height:60px"></div>
+    </div>
+  </section>
+</main>
+
+<script src="shared.js"></script>
+<script>
+const circumference = 2 * Math.PI * 40; // 251.2
+
+function setGauge(arcId, pct) {
+  const arc = document.getElementById(arcId);
+  if (!arc) return;
+  const filled = (pct / 100) * circumference;
+  arc.setAttribute('stroke-dasharray', `${filled} ${circumference}`);
+}
+
+// Charts
+const mkChart = (id, color, label) => new Chart(document.getElementById(id).getContext('2d'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color.replace(')', ',.08)').replace('rgb','rgba'), borderWidth: 2, tension: 0.4, fill: true, pointRadius: 2 }] },
+  options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color:'#4e6080', maxTicksLimit:8 }, grid: { color:'rgba(255,255,255,.04)' } }, y: { ticks: { color:'#4e6080' }, grid: { color:'rgba(255,255,255,.04)' }, beginAtZero: true } } }
+});
+
+const trafficChart = mkChart('trafficChart', '#00c6ff', 'Traffic');
+const serverChart  = mkChart('serverChart',  '#a78bfa', 'Servers');
+
+function pushChart(chart, label, value, maxPoints=20) {
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+  if (chart.data.labels.length > maxPoints) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+  chart.update('quiet');
+}
+
+// Load balancer visual
+function renderLB(count) {
+  const arrows  = document.getElementById('lbArrows');
+  const servers = document.getElementById('lbServers');
+  const bars    = document.getElementById('lbBars');
+  if (!arrows) return;
+  arrows.innerHTML = ''; servers.innerHTML = ''; bars.innerHTML = '';
+
+  const loads = Array.from({length: count}, () => Math.floor(Math.random()*60+20));
+  const maxLoad = Math.max(...loads);
+
+  for (let i = 0; i < count; i++) {
+    arrows.innerHTML += `<div style="font-size:20px;animation:bounce ${0.8+i*0.2}s ease-in-out infinite alternate">↓</div>`;
+    servers.innerHTML += `
+      <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;text-align:center;min-width:80px">
+        <div style="font-size:20px">🖥️</div>
+        <div style="font-size:10px;color:var(--muted);font-family:JetBrains Mono,monospace">srv-0${i+1}</div>
+        <div style="font-size:12px;color:var(--success);margin-top:4px">${loads[i]}%</div>
+      </div>`;
+    const h = Math.round((loads[i]/maxLoad)*50);
+    const col = loads[i]>70 ? 'var(--danger)' : loads[i]>50 ? 'var(--warning)' : 'var(--success)';
+    bars.innerHTML += `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
+      <div style="font-size:10px;color:var(--muted)">${loads[i]}%</div>
+      <div style="width:100%;height:${h}px;background:${col};border-radius:4px 4px 0 0;transition:height .5s ease"></div>
+      <div style="font-size:10px;color:var(--muted)">srv-0${i+1}</div>
+    </div>`;
+  }
+}
+
+async function simulateTraffic() {
+  showNotification('⚡ Simulating 30 rapid requests...');
+  for (let i = 0; i < 30; i++) {
+    await fetch('/monitor');
+    await new Promise(r => setTimeout(r, 80));
+  }
+  showNotification('✅ Traffic spike complete!');
+}
+
+async function loadAnalytics() {
+  const [monRes] = await Promise.all([fetch('/api/analytics')]);
+  const d = await monRes.json();
+  const t = new Date().toLocaleTimeString();
+
+  // Gauges
+  setGauge('cpuArc', d.cpu);
+  setGauge('memArc', d.memory);
+  setGauge('netArc', Math.min(100, d.currentTraffic * 4));
+  setGauge('srvArc', (d.activeServers / 4) * 100);
+
+  document.getElementById('cpuVal').textContent  = d.cpu;
+  document.getElementById('memVal').textContent  = d.memory;
+  document.getElementById('netVal').textContent  = Math.min(100, d.currentTraffic * 4);
+  document.getElementById('srvVal').textContent  = d.activeServers;
+  document.getElementById('cpuStatus').textContent = d.cpu > 80 ? '🔴 Critical' : d.cpu > 50 ? '🟡 Moderate' : '🟢 Normal';
+  document.getElementById('memStatus').textContent = d.memory > 75 ? '🔴 High' : d.memory > 50 ? '🟡 Moderate' : '🟢 Normal';
+  document.getElementById('srvStatus').textContent = ['','Minimal','Scaling','High Load','Max Capacity'][d.activeServers] || '';
+
+  // Stats
+  document.getElementById('statTotal').textContent   = d.totalRequests.toLocaleString();
+  document.getElementById('statTraffic').textContent = d.currentTraffic;
+  document.getElementById('statPeak').textContent    = d.peakTraffic?.value ?? 0;
+  document.getElementById('statPeakTime').textContent = d.peakTraffic?.time ? new Date(d.peakTraffic.time).toLocaleTimeString() : '—';
+  document.getElementById('statUptime').textContent  = Math.floor(d.uptime/60) + 'm';
+  document.getElementById('statCost').textContent    = '$' + (d.activeServers * 0.0416 * 24).toFixed(2);
+
+  pushChart(trafficChart, t, d.currentTraffic);
+  pushChart(serverChart,  t, d.activeServers);
+  renderLB(d.activeServers);
+}
+
+// Bounce animation
+const style = document.createElement('style');
+style.textContent = '@keyframes bounce{from{transform:translateY(0)}to{transform:translateY(8px)}}';
+document.head.appendChild(style);
+
+(async () => {
+  const ok = await initAuth(); if (!ok) return;
+  initTheme(); updateClock();
+  await loadAnalytics();
+  setInterval(updateClock, 1000);
+  setInterval(loadAnalytics, 3000);
+})();
+</script>
+</body>
+</html>

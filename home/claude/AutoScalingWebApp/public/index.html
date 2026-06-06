@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AutoScale Cloud — Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><span class="logo-icon">☁️</span><span class="logo-text">AutoScale</span></div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">📊 Dashboard</a>
+    <a class="nav-item" href="/analytics">📈 Analytics</a>
+    <a class="nav-item" href="/logs">📋 Request Logs</a>
+    <a class="nav-item" href="/security">🛡️ Security</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-details"><div class="user-name" id="userName">Loading...</div><div class="user-role">Admin</div></div>
+    </div>
+    <button class="logout-btn" onclick="handleLogout()" title="Logout">⏻</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="uptime-badge" id="uptimeBadge">⬤ Online</div>
+    </div>
+    <div class="topbar-right">
+      <div id="ddosAlert" class="ddos-badge hidden">🚨 DDoS Alert</div>
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙</button>
+    </div>
+  </div>
+  <div id="notification" class="notification"></div>
+
+  <!-- Metric Cards -->
+  <section class="cards-grid">
+    <div class="metric-card">
+      <div class="metric-label">Total Requests</div>
+      <div class="metric-value" id="requests">0</div>
+      <div class="metric-sub">Since server start</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Traffic Status</div>
+      <div class="metric-value" id="traffic">Low</div>
+      <div class="metric-sub" id="trafficSub">All systems normal</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Active Servers</div>
+      <div class="metric-value" id="serverCount">1</div>
+      <div class="metric-sub">Auto-scaled instances</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Server Health</div>
+      <div class="metric-value" id="health">Healthy</div>
+      <div class="metric-sub" id="healthSub">All checks passing</div>
+    </div>
+  </section>
+
+  <!-- CPU / Memory Gauges -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">⚙️ System Resources</h2>
+      <span class="section-badge" id="peakBadge">Peak: 0 req</span>
+    </div>
+    <div class="gauges-row">
+      <div class="gauge-wrap">
+        <div class="gauge-label">CPU Usage</div>
+        <div class="gauge-ring" id="cpuRing">
+          <svg viewBox="0 0 100 100">
+            <circle class="gauge-track" cx="50" cy="50" r="40"/>
+            <circle class="gauge-fill" id="cpuArc" cx="50" cy="50" r="40" stroke-dasharray="0 251"/>
+          </svg>
+          <div class="gauge-center"><span id="cpuVal">0</span><small>%</small></div>
+        </div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label">Memory Usage</div>
+        <div class="gauge-ring" id="memRing">
+          <svg viewBox="0 0 100 100">
+            <circle class="gauge-track" cx="50" cy="50" r="40"/>
+            <circle class="gauge-fill mem" id="memArc" cx="50" cy="50" r="40" stroke-dasharray="0 251"/>
+          </svg>
+          <div class="gauge-center"><span id="memVal">0</span><small>%</small></div>
+        </div>
+      </div>
+      <div class="gauge-stats">
+        <div class="gstat"><div class="gstat-label">Peak Traffic</div><div class="gstat-val" id="peakVal">0 req</div></div>
+        <div class="gstat"><div class="gstat-label">Peak Time</div><div class="gstat-val" id="peakTime">—</div></div>
+        <div class="gstat"><div class="gstat-label">Uptime</div><div class="gstat-val" id="uptimeVal">0m</div></div>
+        <div class="gstat"><div class="gstat-label">Cost/hr</div><div class="gstat-val" id="costSmall">$0.04</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Server Rack -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">🖥️ Live Server Scaling</h2>
+      <span class="section-badge" id="scalingTierBadge">Tier 1</span>
+    </div>
+    <div class="server-rack" id="serverRack"></div>
+    <!-- Load Balancer Visual -->
+    <div class="lb-visual" id="lbVisual" style="display:none">
+      <div class="lb-box">⚖️ Load Balancer</div>
+      <div class="lb-lines" id="lbLines"></div>
+    </div>
+    <div class="scaling-bar-wrap">
+      <div class="scaling-bar-label"><span>Traffic Load</span><span id="trafficPct">0%</span></div>
+      <div class="scaling-bar-track"><div class="scaling-bar-fill" id="scalingBar"></div></div>
+    </div>
+  </section>
+
+  <!-- Traffic Chart -->
+  <section class="section-card chart-section">
+    <div class="section-header">
+      <h2 class="section-title">📈 Traffic History</h2>
+      <div style="display:flex;gap:8px">
+        <button class="clear-btn" onclick="window.location.href='/analytics'">Full Analytics →</button>
+        <button class="clear-btn" onclick="clearChart()">Clear</button>
+      </div>
+    </div>
+    <canvas id="trafficChart" height="80"></canvas>
+  </section>
+
+  <!-- DDoS + Cost row -->
+  <section class="section-card security-grid">
+    <div>
+      <div class="section-header">
+        <h2 class="section-title">🛡️ DDoS Protection</h2>
+        <span class="status-dot" id="ddosDot"></span>
+      </div>
+      <div class="security-stats">
+        <div class="sec-stat"><div class="sec-stat-val" id="blockedIPs">0</div><div class="sec-stat-label">Blocked IPs</div></div>
+        <div class="sec-stat"><div class="sec-stat-val" id="suspiciousIPs">0</div><div class="sec-stat-label">Suspicious</div></div>
+        <div class="sec-stat"><div class="sec-stat-val" id="ddosStatus">Safe</div><div class="sec-stat-label">Status</div></div>
+      </div>
+      <a href="/security" class="page-link-btn">Manage Security →</a>
+    </div>
+    <div>
+      <div class="section-header"><h2 class="section-title">💰 Cost Optimization</h2></div>
+      <div class="cost-display">
+        <div class="cost-main"><span class="cost-val" id="costPerHour">$0.0416</span><span class="cost-period">/ hour</span></div>
+        <div class="cost-day">≈ <span id="costPerDay">$1.00</span> / day</div>
+      </div>
+      <div class="cost-tip" id="costTip">✅ Optimal — running minimum servers</div>
+      <div class="cost-bar-row">
+        <span class="cost-bar-label">Efficiency</span>
+        <div class="cost-bar-track"><div class="cost-bar-fill" id="costBar" style="width:100%"></div></div>
+        <span class="cost-eff-val" id="costEff">100%</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Users -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">👤 User Management</h2>
+      <span class="section-badge" id="userCountBadge">0 users</span>
+    </div>
+    <div class="add-user-form">
+      <input type="text" id="name" placeholder="Full name"/>
+      <input type="email" id="email" placeholder="Email address"/>
+      <button class="btn-add" onclick="addUser()">+ Add User</button>
+    </div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search" placeholder="Search users..." oninput="filterUsers()"/>
+    </div>
+    <div id="userList" class="user-grid"></div>
+  </section>
+</main>
+
+<script src="shared.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

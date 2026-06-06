@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Request Logs — AutoScale</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .logs-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+    .filter-select { padding:9px 14px; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:10px; color:var(--text); font-family:'Space Grotesk',sans-serif; font-size:13px; outline:none; cursor:pointer; }
+    .filter-select option { background:var(--panel); }
+    .search-input { flex:1; min-width:180px; padding:9px 14px; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:10px; color:var(--text); font-family:'Space Grotesk',sans-serif; font-size:13px; outline:none; }
+    .search-input:focus,.filter-select:focus { border-color:var(--accent); }
+    .search-input::placeholder { color:var(--muted); }
+    .log-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .log-table th { text-align:left; padding:10px 12px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-family:'JetBrains Mono',monospace; border-bottom:1px solid var(--border); }
+    .log-table td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.04); font-family:'JetBrains Mono',monospace; font-size:12px; vertical-align:middle; }
+    .log-table tr:hover td { background:rgba(0,198,255,.04); }
+    .log-table tr { animation:fadeIn .2s ease; }
+    .method-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; }
+    .method-GET    { background:rgba(0,229,160,.15); color:var(--success); }
+    .method-POST   { background:rgba(0,114,255,.15); color:var(--accent); }
+    .method-DELETE { background:rgba(255,79,106,.15); color:var(--danger); }
+    .method-PUT    { background:rgba(255,184,48,.15); color:var(--warning); }
+    .status-ok  { color:var(--success); }
+    .status-err { color:var(--danger); }
+    .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin-bottom:20px; }
+    .mini-stat { background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+    .mini-stat .lbl { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+    .mini-stat .val { font-size:20px; font-weight:700; margin-top:4px; font-family:'JetBrains Mono',monospace; }
+    .log-empty { text-align:center; padding:60px 20px; color:var(--muted); font-size:14px; }
+    .export-btn { padding:9px 16px; background:rgba(0,229,160,.1); border:1px solid rgba(0,229,160,.3); border-radius:10px; color:var(--success); font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600; cursor:pointer; transition:all .2s; text-decoration:none; white-space:nowrap; }
+    .export-btn:hover { background:rgba(0,229,160,.2); }
+    .auto-refresh { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text2); }
+    .auto-refresh input { accent-color:var(--accent); }
+    .pagination { display:flex; align-items:center; gap:8px; margin-top:16px; justify-content:flex-end; }
+    .page-btn { padding:6px 12px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; color:var(--text2); font-family:'Space Grotesk',sans-serif; font-size:13px; cursor:pointer; transition:all .2s; }
+    .page-btn:hover,.page-btn.active { background:rgba(0,198,255,.15); border-color:var(--accent); color:var(--accent); }
+    .page-info { font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+  </style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><span class="logo-icon">☁️</span><span class="logo-text">AutoScale</span></div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">📊 Dashboard</a>
+    <a class="nav-item" href="/analytics">📈 Analytics</a>
+    <a class="nav-item" href="/logs">📋 Request Logs</a>
+    <a class="nav-item" href="/security">🛡️ Security</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-details"><div class="user-name" id="userName">...</div><div class="user-role">Admin</div></div>
+    </div>
+    <button class="logout-btn" onclick="handleLogout()">⏻</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="uptime-badge">📋 Request Logs</div>
+    </div>
+    <div class="topbar-right">
+      <a class="export-btn" href="/api/export/logs" download>⬇ Export CSV</a>
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙</button>
+    </div>
+  </div>
+  <div id="notification" class="notification"></div>
+
+  <!-- Mini stats -->
+  <div class="stats-row">
+    <div class="mini-stat"><div class="lbl">Total Logged</div><div class="val" id="statTotal" style="color:var(--accent)">0</div></div>
+    <div class="mini-stat"><div class="lbl">GET</div><div class="val" id="statGet" style="color:var(--success)">0</div></div>
+    <div class="mini-stat"><div class="lbl">POST</div><div class="val" id="statPost" style="color:var(--accent)">0</div></div>
+    <div class="mini-stat"><div class="lbl">DELETE</div><div class="val" id="statDelete" style="color:var(--danger)">0</div></div>
+    <div class="mini-stat"><div class="lbl">Errors</div><div class="val" id="statErrors" style="color:var(--warning)">0</div></div>
+  </div>
+
+  <!-- Toolbar -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">📋 Live Request Logs</h2>
+      <div class="auto-refresh">
+        <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh()"/>
+        <label for="autoRefresh">Auto-refresh</label>
+      </div>
+    </div>
+
+    <div class="logs-toolbar">
+      <input type="text" class="search-input" id="logSearch" placeholder="🔍 Search path, IP, method..." oninput="renderTable()"/>
+      <select class="filter-select" id="methodFilter" onchange="renderTable()">
+        <option value="">All Methods</option>
+        <option value="GET">GET</option>
+        <option value="POST">POST</option>
+        <option value="DELETE">DELETE</option>
+      </select>
+      <select class="filter-select" id="statusFilter" onchange="renderTable()">
+        <option value="">All Status</option>
+        <option value="200">200 OK</option>
+        <option value="4">4xx Errors</option>
+        <option value="5">5xx Errors</option>
+      </select>
+      <button class="export-btn" onclick="clearDisplay()" style="background:rgba(255,79,106,.1);border-color:rgba(255,79,106,.3);color:var(--danger)">🗑 Clear View</button>
+    </div>
+
+    <div style="overflow-x:auto">
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Time</th><th>Method</th><th>Path</th><th>IP</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+
+    <div id="logEmpty" class="log-empty" style="display:none">No logs match your filters</div>
+
+    <div class="pagination">
+      <span class="page-info" id="pageInfo">Showing 0 of 0</span>
+      <button class="page-btn" onclick="changePage(-1)">← Prev</button>
+      <button class="page-btn" onclick="changePage(1)">Next →</button>
+    </div>
+  </section>
+
+  <!-- Alert history -->
+  <section class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">🔔 Alert History</h2>
+      <button class="clear-btn" onclick="clearAlerts()">Clear Alerts</button>
+    </div>
+    <div id="alertList" style="display:flex;flex-direction:column;gap:8px">
+      <div style="text-align:center;padding:30px;color:var(--muted);font-size:14px">No alerts yet</div>
+    </div>
+  </section>
+</main>
+
+<script src="shared.js"></script>
+<script>
+let allLogs = [], filteredLogs = [], page = 0;
+const PAGE_SIZE = 15;
+let refreshTimer = null;
+
+function renderTable() {
+  const search = document.getElementById('logSearch').value.toLowerCase();
+  const method = document.getElementById('methodFilter').value;
+  const status = document.getElementById('statusFilter').value;
+
+  filteredLogs = allLogs.filter(l => {
+    const matchSearch = !search || l.path.includes(search) || l.ip.includes(search) || l.method.toLowerCase().includes(search);
+    const matchMethod = !method || l.method === method;
+    const matchStatus = !status || String(l.status).startsWith(status);
+    return matchSearch && matchMethod && matchStatus;
+  });
+
+  const start = page * PAGE_SIZE;
+  const slice = filteredLogs.slice(start, start + PAGE_SIZE);
+  const body = document.getElementById('logBody');
+  const empty = document.getElementById('logEmpty');
+
+  if (!slice.length) { body.innerHTML = ''; empty.style.display = 'block'; }
+  else {
+    empty.style.display = 'none';
+    body.innerHTML = slice.map(l => `
+      <tr>
+        <td style="color:var(--muted)">${l.id}</td>
+        <td>${l.time}</td>
+        <td><span class="method-badge method-${l.method}">${l.method}</span></td>
+        <td style="color:var(--text2)">${l.path}</td>
+        <td style="color:var(--muted)">${l.ip}</td>
+        <td class="${l.status < 400 ? 'status-ok' : 'status-err'}">${l.status}</td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('pageInfo').textContent = `Showing ${Math.min(start+PAGE_SIZE,filteredLogs.length)} of ${filteredLogs.length}`;
+
+  // Mini stats
+  document.getElementById('statTotal').textContent  = allLogs.length;
+  document.getElementById('statGet').textContent    = allLogs.filter(l=>l.method==='GET').length;
+  document.getElementById('statPost').textContent   = allLogs.filter(l=>l.method==='POST').length;
+  document.getElementById('statDelete').textContent = allLogs.filter(l=>l.method==='DELETE').length;
+  document.getElementById('statErrors').textContent = allLogs.filter(l=>l.status>=400).length;
+}
+
+function changePage(dir) {
+  const maxPage = Math.ceil(filteredLogs.length / PAGE_SIZE) - 1;
+  page = Math.max(0, Math.min(maxPage, page + dir));
+  renderTable();
+}
+
+function clearDisplay() { allLogs = []; filteredLogs = []; renderTable(); }
+
+async function loadLogs() {
+  try {
+    const res = await fetch('/api/logs');
+    const d = await res.json();
+    allLogs = d.logs || [];
+    renderTable();
+  } catch {}
+}
+
+async function loadAlerts() {
+  try {
+    const res = await fetch('/api/alerts');
+    const d = await res.json();
+    const list = document.getElementById('alertList');
+    if (!d.alerts?.length) { list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:14px">No alerts</div>'; return; }
+    list.innerHTML = d.alerts.map(a => {
+      const icon = a.type==='danger' ? '🚨' : a.type==='warning' ? '⚠️' : 'ℹ️';
+      const col  = a.type==='danger' ? 'var(--danger)' : a.type==='warning' ? 'var(--warning)' : 'var(--accent)';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--panel2);border:1px solid var(--border);border-left:3px solid ${col};border-radius:10px">
+        <span>${icon}</span>
+        <span style="flex:1;font-size:13px">${a.message}</span>
+        <span style="font-size:11px;color:var(--muted);font-family:JetBrains Mono,monospace">${new Date(a.time).toLocaleTimeString()}</span>
+      </div>`;
+    }).join('');
+  } catch {}
+}
+
+async function clearAlerts() {
+  await fetch('/api/alerts', { method:'DELETE' });
+  showNotification('🗑 Alerts cleared');
+  loadAlerts();
+}
+
+function toggleAutoRefresh() {
+  const on = document.getElementById('autoRefresh').checked;
+  clearInterval(refreshTimer);
+  if (on) refreshTimer = setInterval(() => { loadLogs(); loadAlerts(); }, 3000);
+}
+
+(async () => {
+  const ok = await initAuth(); if (!ok) return;
+  initTheme(); updateClock();
+  await loadLogs(); await loadAlerts();
+  setInterval(updateClock, 1000);
+  refreshTimer = setInterval(() => { loadLogs(); loadAlerts(); }, 3000);
+})();
+</script>
+</body>
+</html>
